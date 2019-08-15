@@ -1,9 +1,11 @@
 <?php
 namespace App\Socket\Controller;
 
+use App\Model\ServerNode;
 use App\Model\SocketClient;
 use App\Model\User;
 use App\Model\UserToken;
+use CloverSwoole\Swoole\ServerManager;
 use CloverSwoole\Utility\FindVar;
 use CloverSwoole\Utility\Random;
 use Swoole\WebSocket\Frame;
@@ -32,39 +34,65 @@ class BaseController
      */
     protected $user_info = null;
     /**
-     * SwooleServer
-     * @var null|Server
-     */
-    protected $server = null;
-    /**
-     * opcode
-     * @var null
-     */
-    protected $opcode = null;
-    /**
      * 请求的数据
      * @var array|mixed|null
      */
     protected $request_data = null;
     /**
-     * fd
-     * @var null
+     * @var null | Frame
      */
-    protected $fd = null;
-
+    protected $frame = null;
     /**
      * BaseController constructor.
-     * @param SocketClient $socket_client
-     * @param Server $server
      * @param Frame $frame
      */
-    public function __construct(SocketClient $socket_client, Server $server, Frame $frame)
+    public function __construct(Frame $frame)
     {
-        $this -> socket_client = $socket_client;
-        $this -> server = $server;
-        $this -> fd = $frame -> fd;
-        $this -> request_data = strlen($frame -> data) > 0?json_decode($frame -> data,1):[];
-        $this -> opcode = $frame -> opcode;
+        /**
+         * 存储frame
+         */
+        $this -> frame = $frame;
+        try {
+            /**
+             * 调用操作
+             */
+            $this->{FindVar::findVarByExpression('action',$this -> request_data)}();
+        } catch (\Throwable $throwable) {
+            /**
+             * 处理异常
+             */
+            $this -> onException($this -> request_data['action'],$throwable);
+        }
+    }
+
+    /**
+     * 异常处理
+     * @param $actionName
+     * @param \Throwable $throwable
+     */
+    protected function onException($actionName,\Throwable $throwable)
+    {
+        $this -> returnJson(['actionName'=>$actionName,'status'=>$throwable -> getCode(),'msg'=>$throwable -> getMessage()]);
+    }
+
+    /**
+     * 获取Socket Client 信息
+     * @param null $name
+     * @return array|mixed
+     */
+    protected function get_socket_client($name = null)
+    {
+        if($this -> socket_client == null){
+            /**
+             * 获取node
+             */
+            $node_id = ServerNode::where(['node_host' => ServerManager::getInterface() -> getSwooleRawServer() ->host, 'node_port' => ServerManager::getInterface() -> getSwooleRawServer()->port])->value('id');
+            /**
+             * 获取socket
+             */
+            $this -> socket_client = SocketClient::where(['fd' => $this -> frame ->fd, 'node' => $node_id])->first();
+        }
+        return FindVar::findVarByExpression($name,$this -> socket_client);
     }
 
     /**
@@ -74,12 +102,21 @@ class BaseController
      */
     protected function get_user_info($name = null)
     {
+        /**
+         * 判断token 是否已经初始化过
+         */
         if($this -> user_token === null){
-            $this -> user_token = UserToken::withTrashed() -> where(['id'=>$this -> socket_client['token']]) -> first();
+            $this -> user_token = UserToken::withTrashed() -> where(['id'=>$this -> get_socket_client('token')]) -> first();
         }
+        /**
+         * 判断用户信息是否已经获取过
+         */
         if($this -> user_info === null){
             $this -> user_info = User::where(['id'=>$this -> user_token['user_id']]) -> first();
         }
+        /**
+         * 返回用户的信息
+         */
         return FindVar::findVarByExpression($name,$this -> user_info);
     }
 
@@ -102,7 +139,7 @@ class BaseController
         /**
          * 推送消息
          */
-        $this -> server -> push($fd === null?$this -> fd:$fd,json_encode($data));
+        ServerManager::getInterface() -> getSwooleRawServer() -> push($fd === null?$this -> frame -> fd:$fd,json_encode($data));
     }
 
     /**

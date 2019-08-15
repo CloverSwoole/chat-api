@@ -6,6 +6,8 @@ use App\Event\SocketEvent;
 use App\Exception\SocketException;
 use App\Model\ServerNode;
 use App\Model\SocketClient;
+use CloverSwoole\Swoole\ServerManager;
+use CloverSwoole\Utility\FindVar;
 use CloverSwoole\Utility\Random;
 use Swoole\Http\Request;
 use Swoole\Websocket\Frame;
@@ -38,10 +40,6 @@ class Socket
              * 事件通知
              */
             SocketEvent::openFail($throwable,$server,$request);
-            /**
-             * 处理异常
-             */
-            SocketException::catchOpenException($throwable,$server,$request);
         }
     }
 
@@ -54,6 +52,10 @@ class Socket
     public static function onMessage(Server $server, Frame $frame)
     {
         /**
+         * 放置server
+         */
+        (new ServerManager($server)) -> setAsGlobal();
+        /**
          * 判断信息是否正确
          */
         if ($frame->opcode == 1 && $frame->finish == true && strlen($frame->data) > 0) {
@@ -64,35 +66,29 @@ class Socket
         /**
          * 获取请求id
          */
-        $request_id = isset($request_data['request_id']) && strlen($request_data['request_id']) > 0 ? $request_data['request_id'] : Random::randStr(50);
+        $request_id = strlen(FindVar::findVarByExpression('request_id',$request_data)) > 0 ? $request_data['request_id'] : Random::randStr(50);
         try {
-            /**
-             * 获取用户连接节点
-             */
-            $node_id = ServerNode::where(['node_host' => $server->host, 'node_port' => $server->port])->value('id');
-            /**
-             * 查询client 信息
-             */
-            if (!($websocket_client = SocketClient::where(['fd' => $frame->fd, 'node' => $node_id])->first())) {
-                throw new \Exception('连接信息不存在');
-            }
+//            /**
+//             * 获取用户连接节点
+//             */
+//            $node_id = ServerNode::where(['node_host' => $server->host, 'node_port' => $server->port])->value('id');
+//            /**
+//             * 查询client 信息
+//             */
+//            if (!($websocket_client = SocketClient::where(['fd' => $frame->fd, 'node' => $node_id])->first())) {
+//                throw new \Exception('连接信息不存在');
+//            }
             /**
              * 应用名过滤
              */
-            if ((!isset($request_data['app'])) && strlen($request_data['app']) < 1) {
+            if (strlen(FindVar::findVarByExpression('app',$request_data)) < 1) {
                 throw new \Exception('应用不存在');
             }
             /**
              * 模块过滤
              */
-            if ((!isset($request_data['controller'])) && strlen($request_data['controller']) < 1) {
-                throw new \Exception('模块不存在');
-            }
-            /**
-             * 操作不存在
-             */
-            if ((!isset($request_data['action'])) && strlen($request_data['action']) < 1) {
-                throw new \Exception('操作不存在');
+            if (strlen(FindVar::findVarByExpression('controller',$request_data)) < 1) {
+                throw new \Exception('控制器不存在');
             }
             /**
              * 获取消息的操作目的
@@ -115,24 +111,7 @@ class Socket
                 /**
                  * 实例化控制器
                  */
-                $controller = new $class($websocket_client, $server, $frame);
-                try {
-                    /**
-                     * 调用操作
-                     */
-                    $result = $controller->{$request_data['action']}();
-                } catch (\Throwable $throwable) {
-                    /**
-                     * 记录异常
-                     */
-                }
-                /**
-                 * 判断是否存在内容
-                 */
-                if (!is_null($result)) {
-                    $result['request_id'] = $request_id;
-                    $server->push($frame->fd, json_encode($result));
-                }
+                new $class($websocket_client, $server, $frame);
             } else {
                 throw new \Exception('找不到指定操作');
             }
