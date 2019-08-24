@@ -116,3 +116,22 @@ include('./vendor/autoload.php');
     $table->timestamp('updated_at')->nullable()->index();
     $table->softDeletes()->index();
 });
+/**
+ * 后台管理节点表
+ */
+\CloverSwoole\Databases\DB::schema()->create('admin_navigation', function ($table) {
+    /**
+     * @var Illuminate\Database\Schema\Blueprint $table
+     */
+    $table->increments('id');
+    $table->string('name');
+    $table->string('pid');
+    $table->string('path');
+    $table->string('icon');
+    $table->string('component');
+    $table->string('hidden');
+    $table->string('redirect')->nullable();
+    $table->timestamp('created_at')->nullable()->index();
+    $table->timestamp('updated_at')->nullable()->index();
+    $table->softDeletes()->index();
+});
