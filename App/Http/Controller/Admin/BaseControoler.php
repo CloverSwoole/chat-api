@@ -37,9 +37,13 @@ class BaseControoler extends Controller
          */
         Response::getInterface()->withHeader('Access-Control-Allow-Method', 'POST');
         /**
+         * 允许客户端附带cookie
+         */
+        Response::getInterface()->withHeader('Access-Control-Allow-Credentials', 'true');
+        /**
          * 允许修改的协议头
          */
-        Response::getInterface()->withHeader('Access-Control-Allow-Headers', 'accept, content-type, socketlog');
+        Response::getInterface()->withHeader('Access-Control-Allow-Headers', 'accept, content-type');
         /**
          * 响应码
          */
